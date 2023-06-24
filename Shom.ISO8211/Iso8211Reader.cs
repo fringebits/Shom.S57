@@ -15,6 +15,8 @@ namespace Shom.ISO8211
         public List<string> tagcollector=new List<string>();
 
         private readonly byte[] m_fileByteArray;
+
+        // #TODO: create a version of this that reads from a stream.
         public Iso8211Reader(byte[] FileByteArray)
         {
 

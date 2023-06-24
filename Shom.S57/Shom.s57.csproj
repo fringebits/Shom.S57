@@ -86,6 +86,10 @@
     <Compile Include="VectorRecordPointer.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\..\..\Trailwerks\Modules\SimpleLogger\SimpleLogger\SimpleLogger.csproj">
+      <Project>{CF8C9230-CC66-43DF-8070-01EB53978B5E}</Project>
+      <Name>SimpleLogger</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Shom.ISO8211\Shom.ISO8211.csproj">
       <Project>{0a1b575b-cfa2-4e4b-9439-85c63377e0c7}</Project>
       <Name>Shom.ISO8211</Name>

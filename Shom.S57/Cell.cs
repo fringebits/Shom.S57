@@ -6,40 +6,76 @@ namespace S57
 {
     public class Cell
     {
-        private readonly BaseFile _baseFile;
-
         public Cell(BaseFile baseFile)
         {
-            _baseFile = baseFile;
+            this.BaseFile = baseFile;
         }
 
-        public BaseFile BaseFile
-        {
-            get { return _baseFile;  }
-        }
+        public BaseFile BaseFile { get; private set; }
 
-        public int EditionNumber
+        public string Name => "Unknown";
+
+        public string Description => "None";
+
+        public BoundingBox BoundingBox
         {
-            get
-            {
-                return Int32.Parse(_baseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetString(0, "EDTN")); 
+            get {
+                var box = new BoundingBox();
+                var mapCovers = BaseFile.GetFeaturesOfClass(S57Obj.M_COVR);
+                foreach (var mapCover in mapCovers)
+                {
+                    var geom = mapCover.GetGeometry(false);
+                    if (geom is Area)
+                    {
+                        var area = geom as Area;
+                        foreach (var point in area.points)
+                        {
+                            if (point.X < box.westLongitude)
+                            {
+                                box.westLongitude = point.X;
+                            }
+                            else if (point.X > box.eastLongitude)
+                            {
+                                box.eastLongitude = point.X;
+                            }
+                            if (point.Y > box.northLatitude)
+                            {
+                                box.northLatitude = point.Y;
+                            }
+                            else if (point.Y < box.southLatitude)
+                            {
+                                box.southLatitude = point.Y;
+                            }
+                        }
+                    }
+                }
+                return box;
             }
         }
 
-        public int UpdateNumber
+        private string GetDataSetGeneralInformationRecord(string field, int subFieldRow, string subFieldTag)
         {
-            get
-            {
-                return Int32.Parse(_baseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetString(0, "UPDN"));
-            }
+            return this.BaseFile.DataSetGeneralInformationRecord.Fields
+                .GetFieldByTag(field)
+                .subFields.GetString(subFieldRow, subFieldTag);
         }
+
+        private Int32 GetDataSetGeneralInformationRecordAsInt(string field, int subFieldRow, string subFieldTag)
+        {
+            var rec = GetDataSetGeneralInformationRecord(field, subFieldRow, subFieldTag);
+            return Int32.Parse(rec);
+        }
+
+        public int EditionNumber => GetDataSetGeneralInformationRecordAsInt("DSID", 0 ,"EDTN"); 
+
+        public int UpdateNumber => GetDataSetGeneralInformationRecordAsInt("DSID", 0, "UPDN");
 
         public uint IntendedUsage
         {
             get
             {
-                
-                return _baseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetUInt32(0, "INTU");
+ 
+                return BaseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetUInt32(0, "INTU");
             }
         }
 
@@ -48,7 +84,7 @@ namespace S57
             get
             {
                 
-                return _baseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetString(0, "DSNM"); 
+                return BaseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetString(0, "DSNM"); 
             }
         }
 
@@ -56,7 +92,7 @@ namespace S57
         {
             get
             {
-                return ConvertToDateTime(_baseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetString(0, "UDAT"));
+                return ConvertToDateTime(BaseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetString(0, "UDAT"));
             }
         }
 
@@ -64,7 +100,7 @@ namespace S57
         {
             get
             {
-                return ConvertToDateTime(_baseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetString(0, "ISDT"));
+                return ConvertToDateTime(BaseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetString(0, "ISDT"));
             }
         }
 
@@ -72,7 +108,7 @@ namespace S57
         {
             get
             {                
-                return new Agency(_baseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetUInt32(0, "AGEN"));
+                return new Agency(BaseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetUInt32(0, "AGEN"));
             }
         }
 
@@ -80,7 +116,7 @@ namespace S57
         {
             get
             {
-                return _baseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetString(0, "COMT");
+                return BaseFile.DataSetGeneralInformationRecord.Fields.GetFieldByTag("DSID").subFields.GetString(0, "COMT");
             }
         }
 
@@ -88,7 +124,7 @@ namespace S57
         {
             get
             {
-                return new Datum(_baseFile.DataSetGeographicReferenceRecord.Fields.GetFieldByTag("DSPM").subFields.GetUInt32(0, "VDAT"));
+                return new Datum(BaseFile.DataSetGeographicReferenceRecord.Fields.GetFieldByTag("DSPM").subFields.GetUInt32(0, "VDAT"));
             }
         }
 
@@ -96,7 +132,7 @@ namespace S57
         {
             get
             {
-                return new Datum(_baseFile.DataSetGeographicReferenceRecord.Fields.GetFieldByTag("DSPM").subFields.GetUInt32(0, "SDAT"));
+                return new Datum(BaseFile.DataSetGeographicReferenceRecord.Fields.GetFieldByTag("DSPM").subFields.GetUInt32(0, "SDAT"));
             }
         }
 

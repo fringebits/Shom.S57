@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Collections.Generic;
 using Shom.ISO8211;
 using System.Diagnostics;
+using System.Linq;
 
 namespace S57.File
 {
@@ -14,7 +15,6 @@ namespace S57.File
         ISO10646 = 2    // Unicode (Universal Character Set repertoire UCS-2 implementation level 1)
     }
     
-    
     public class BaseFile
     {
         public DataRecord DataSetGeneralInformationRecord = null;
@@ -23,7 +23,7 @@ namespace S57.File
         //2 dictinaries using either NAMEKey or LongName to point to a given value
         //reasons: features are referenced via LongName, update files referenced using NAMEKey
         private Dictionary<NAMEkey, Feature> eFeatureRecords; 
-        public Dictionary<LongName, Feature> eFeatureObjects;
+        public Dictionary<LongName, Feature> eFeatureObjects { get; private set; }
 
         private Dictionary<NAMEkey, Vector> eVectorRecords;
 
@@ -140,6 +140,7 @@ namespace S57.File
                 nextRec = reader.ReadDataRecord();
             }
         }
+
         public void BindVectorPointersOfVectors()
         {
             foreach (var eVec in eVectorRecords)
@@ -245,6 +246,15 @@ namespace S57.File
                 }                
             }
         }
+
+        public List<Feature> GetFeaturesOfClass(params S57Obj[] code)
+        {
+            return this.eFeatureObjects
+                .Where(item => code.Contains(item.Value.ObjectCode))
+                .Select(item => item.Value)
+                .ToList();
+        }
+
         private void ExtractGeometry(KeyValuePair<NAMEkey, Vector> eVec)
         {
             var sg2d = eVec.Value.VectorRecord.Fields.GetFieldByTag("SG2D");

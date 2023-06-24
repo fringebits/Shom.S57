@@ -6,10 +6,12 @@ namespace S57
 {
     public class Catalogue
     {
-        public DataRecord _cr;
-
+        public DataRecord DataRecord { get; private set; }
+        
         public uint RecordIdentificationNumber;
-        public string fileName;
+        
+        public string FileName { get; private set; }
+
         public string fileLongName;
         public uint NavigationalPurpose;
         public uint CompilationScale;
@@ -17,33 +19,23 @@ namespace S57
         public double westernMostLongitude;
         public double northernMostLatitude;
         public double easternMostLongitude;
-
-        // some private variables  
-        SFcontainer[] subFieldRow;
-        List<string> tagLookup;
-
-        public DataRecord DataRecord
-        {
-            get { return _cr; }
-        }
-
         
-        public Catalogue(S57Reader reader, DataRecord cr, CatalogueFile catalogueFile)
+        public Catalogue(DataRecord cr)
         {
-            _cr = cr;
-            BuildFromDataRecord(reader, cr, catalogueFile);
+            this.DataRecord = cr;
+            BuildFromDataRecord();
         }
 
-        public void BuildFromDataRecord(S57Reader reader, DataRecord cr, CatalogueFile catalogueFile)
+        private void BuildFromDataRecord()
         {
             // Record Identifier Field
-            var catd = cr.Fields.GetFieldByTag("CATD");
+            var catd = this.DataRecord.Fields.GetFieldByTag("CATD");
             if (catd != null)
             {
-                subFieldRow = catd.subFields.Values[0];
-                tagLookup = catd.subFields.TagIndex;
+                var subFieldRow = catd.subFields.Values[0];
+                var tagLookup = catd.subFields.TagIndex;
                 RecordIdentificationNumber = (uint)subFieldRow.GetInt32(tagLookup.IndexOf("RCID")); //this one ist stored as integer, so implementing GetUint32 to do merely a cast will fail
-                fileName = subFieldRow.GetString(tagLookup.IndexOf("FILE"));
+                FileName = subFieldRow.GetString(tagLookup.IndexOf("FILE"));
                 fileLongName = subFieldRow.GetString(tagLookup.IndexOf("LFIL"));                
                 southernMostLatitude = subFieldRow.GetDouble(tagLookup.IndexOf("SLAT"));
                 westernMostLongitude = subFieldRow.GetDouble(tagLookup.IndexOf("WLON"));

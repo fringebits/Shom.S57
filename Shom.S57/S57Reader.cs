@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using Shom.ISO8211;
 using S57.File;
 using System.Diagnostics;
+using System.Linq;
+using SimpleLogger;
 
 namespace S57
 {
@@ -13,91 +15,41 @@ namespace S57
         public S57Reader()
         { }
 
-        public static int mapIndex = 0;
+        //public static int mapIndex = 0;
 
-        public Cell cellInfo;
-        public BaseFile baseFile;
-        public UpdateFile updateFile;
-        public CatalogueFile catalogueFile;
-        public ProductInfo productInfo;
+        //public Cell cellInfo;
+        //public BaseFile baseFile;
+        //public UpdateFile updateFile;
+        public CatalogueFile CatalogueFile { get; private set; }
+        //public ProductInfo ProductInfo { get; private set; }
 
         public Dictionary<uint, Catalogue> ExchangeSetFiles = new Dictionary<uint, Catalogue>();
         public Dictionary<uint, Catalogue> BaseFiles = new Dictionary<uint, Catalogue>();
 
         byte[] fileByteArray;
 
-        //public void ReadCatalogue(System.IO.Stream stream)
-        //{
-        //    using (var reader = new Iso8211Reader(stream))
-        //    {
-        //        catalogueFile = new CatalogueFile(reader);
-        //        BuildCatalogue();
-        //    }
-        //}
-
         public void ReadCatalogue(ZipArchive archive)
         {
-            Stream S57map = null;
-            ZipArchiveEntry catalogueentry = null;
-            foreach (ZipArchiveEntry entry in archive.Entries)
+            var catalogEntry = archive.Entries.Single(item => item.Name.Equals("CATALOG.031"));
+
+            using (var map = catalogEntry.Open())
             {
-                if (entry.Name.Equals("CATALOG.031"))
+                var count = catalogEntry.Length;
+                byte[] fileByteArray = new byte[count]; //consider re-using same byte array for next file to minimize new allocations
+                var memoryStream = new MemoryStream(fileByteArray);
+                map.CopyTo(memoryStream);
+                memoryStream.Dispose();
+                using (var reader = new Iso8211Reader(fileByteArray))
                 {
-                    catalogueentry = entry;
+                    BuildCatalogue(reader);
+
+                    foreach (var bla in reader.tagcollector)
+                        Console.WriteLine(bla);
                 }
             }
-            S57map = catalogueentry.Open();
-            var count = catalogueentry.Length;
-            byte[] fileByteArray = new byte[count]; //consider re-using same byte array for next file to minimize new allocations
-            MemoryStream memoryStream = new MemoryStream(fileByteArray);
-            S57map.CopyTo(memoryStream);
-            memoryStream.Dispose();
-            using (var reader = new Iso8211Reader(fileByteArray))
-            {
-                catalogueFile = new CatalogueFile(reader);
-                BuildCatalogue();
-                foreach (var bla in reader.tagcollector)
-                    Console.WriteLine(bla);
-            }
-            S57map.Dispose();
         }
 
-
-
-        //public void ReadCatalogue(string RootDirectory)
-        //{
-        //    if (!RootDirectory.EndsWith("ENC_ROOT"))
-        //    {
-        //        //Console.WriteLine("Selected folder is not ENC_ROOT folder of a Volume");
-        //        return;
-        //    }
-        //    Stream S57map = null;
-        //    string[] filePaths = Directory.GetFiles(@RootDirectory, "CATALOG.031", SearchOption.AllDirectories);
-        //    string catalogueentry = null;
-        //    if (filePaths.Length > 1)
-        //    {
-        //        //Console.WriteLine("More than one Catalogue file found. Please selected MapSet root folder");
-        //        return;
-        //    }
-        //    catalogueentry = filePaths[0];
-        //    S57map = new FileStream(@catalogueentry, FileMode.Open, FileAccess.Read, FileShare.Read, 65536);
-        //    using (var reader = new Iso8211Reader(S57map))
-        //    {
-        //        catalogueFile = new CatalogueFile(reader);
-        //        BuildCatalogue();
-        //    }
-        //    S57map.Dispose();       
-        //}
-
-        //public void ReadProductInfo(System.IO.Stream stream)
-        //{
-        //    using (var reader = new Iso8211Reader(stream))
-        //    {
-        //        productInfo = new ProductInfo(reader);
-        //    }
-        //}
-
-        public void ReadProductInfo(ZipArchive archive, string MapName)
+        public ProductInfo ReadProductInfo(ZipArchive archive, string MapName)
         {
             Stream S57map = null;
             foreach (ZipArchiveEntry entry in archive.Entries)
@@ -119,39 +71,31 @@ namespace S57
 
                     using (var reader = new Iso8211Reader(fileByteArray))
                     {
-                        productInfo = new ProductInfo(reader);
+                        return new ProductInfo(reader);
                     }
                 }
             }
+
+            return null;
         }
-        public void Read(ZipArchive archive, string MapName, bool ApplyUpdates)
+
+        public Cell Read(ZipArchive archive, string mapName, bool ApplyUpdates)
         {
-            string basename = MapName.Remove(MapName.Length - 4);
-            Stream S57map=null;
-            ZipArchiveEntry baseentry=null;
-            SortedList<uint, ZipArchiveEntry> updatefiles = new SortedList<uint, ZipArchiveEntry>();
-            Stream S57update;
-            foreach (ZipArchiveEntry entry in archive.Entries)
+            Logger.Log($"Read({archive}, {mapName}, {ApplyUpdates}");
+            mapName = Path.GetFileName(mapName);
+            string basename = Path.GetFileNameWithoutExtension(mapName);
+
+            var updatefiles = new SortedList<uint, ZipArchiveEntry>();
+            foreach (var entry in archive.Entries.Where(item => item.Name.Contains(basename)))
             {
-                if (entry.Name.Contains(basename))
-                {
-                    if (entry.Name.Equals(MapName))
-                    {
-                        baseentry = entry;
-                    }
-                    else
-                    {
-                        int val;
-                        string end = entry.Name.Substring(entry.Name.Length - 3);
-                        if (char.IsDigit(end[0]) && char.IsDigit(end[1]) && char.IsDigit(end[2]))
-                        {
-                            int.TryParse(end, out val); 
-                            updatefiles.Add(Convert.ToUInt32(end.ToString()),entry);
-                        }
-                    }
-                }
+                var extension = Path.GetExtension(entry.Name);
+                var index = uint.Parse(extension.Substring(1));
+                updatefiles.Add(index, entry);
             }
-            S57map = baseentry.Open();
+
+            // process the first map (better be 000)
+            var baseentry = updatefiles.First().Value;
+            var S57map = baseentry.Open();
             int count = (int)baseentry.Length;
             if (fileByteArray == null)
                 fileByteArray = new byte[count];
@@ -164,19 +108,22 @@ namespace S57
             S57map.CopyTo(memoryStream);
             memoryStream.Dispose();
 
+            BaseFile baseFile = null;
             using (var reader = new Iso8211Reader(fileByteArray))
             {
                 baseFile = new BaseFile(reader);
                 foreach (var bla in reader.tagcollector)
+                {
                     Console.WriteLine(bla);
+                }
             }
             S57map.Dispose();
 
             if (ApplyUpdates)
             {
-                foreach (var entry in updatefiles)
+                foreach (var entry in updatefiles.Skip(1))
                 {
-                    S57update = entry.Value.Open();
+                    var S57update = entry.Value.Open();
                     count = (int)entry.Value.Length;
                     Array.Clear(fileByteArray, 0, fileByteArray.Length);
                     Array.Resize(ref fileByteArray, count);
@@ -185,81 +132,21 @@ namespace S57
                     memoryStream.Dispose();
                     using (var updatereader = new Iso8211Reader(fileByteArray))
                     {
-                        UpdateFile updateFile = new UpdateFile(updatereader);
+                        var updateFile = new UpdateFile(updatereader);
                         baseFile.ApplyUpdateFile(updateFile);
                     }
                     S57update.Dispose();
                 }
             }
-            cellInfo = new Cell(baseFile);
+
+            var cellInfo = new Cell(baseFile);
             baseFile.BindVectorPointersOfVectors();
             baseFile.BindVectorPointersOfFeatures();
             baseFile.BuildVectorGeometry();
             baseFile.BindFeatureObjectPointers();
 
+            return cellInfo;
         }
-        //public void Read(string RootDirectory, string MapName, bool ApplyUpdates)
-        //{
-        //    if (!RootDirectory.EndsWith("ENC_ROOT"))
-        //    {
-        //        //Console.WriteLine("Selected folder is not ENC_ROOT folder of a Volume");
-        //        return;
-        //    }
-        //    string basename = MapName.Remove(MapName.Length - 4);
-        //    Stream S57map = null;
-        //    string baseentry = null;
-        //    SortedList<uint, string> updatefiles = new SortedList<uint, string>();
-        //    Stream S57update;
-        //    string[] filePaths = Directory.GetFiles(@RootDirectory, "*.*", SearchOption.AllDirectories);
-            
-
-        //    foreach (string entry in filePaths)
-        //    {
-        //        if (entry.Contains(basename))
-        //        {
-        //            if (entry.EndsWith(MapName))
-        //            {
-        //                baseentry = entry;
-        //            }
-        //            else
-        //            {
-        //                int val;
-        //                string end = entry.Substring(entry.Length - 3);
-        //                if (char.IsDigit(end[0]) && char.IsDigit(end[1]) && char.IsDigit(end[2]))
-        //                {
-        //                    int.TryParse(end, out val);
-        //                    updatefiles.Add(Convert.ToUInt32(end.ToString()), entry);
-        //                }
-        //            }
-        //        }
-        //    }
-        //    S57map = new FileStream(@baseentry, FileMode.Open, FileAccess.Read, FileShare.Read, 65536);
-        //    using (var reader = new Iso8211Reader(S57map))
-        //    {
-        //        baseFile = new BaseFile(reader);
-        //    }
-
-        //    S57map.Dispose();
-        //    if (ApplyUpdates)
-        //    {
-        //        foreach (var entry in updatefiles)
-        //        {
-        //            S57update = new FileStream(@entry.Value, FileMode.Open);
-        //            using (var updatereader = new Iso8211Reader(S57update))
-        //            {
-        //                UpdateFile updateFile = new UpdateFile(updatereader);
-        //                baseFile.ApplyUpdateFile(updateFile);
-        //            }
-        //            S57update.Dispose();
-        //        }
-        //    }
-        //    cellInfo = new Cell(baseFile);
-        //    baseFile.BindVectorPointersOfVectors();
-        //    baseFile.BindVectorPointersOfFeatures();
-        //    baseFile.BuildVectorGeometry();
-        //    baseFile.BindFeatureObjectPointers();
-        //}
-
 
         //public void Read(System.IO.Stream stream)
         //{
@@ -281,49 +168,26 @@ namespace S57
         //    //Console.WriteLine(((double)(timer.Elapsed.TotalMilliseconds)).ToString("0.00 ms"));
         //}    
 
-        private void BuildCatalogue()
+        private void BuildCatalogue(Iso8211Reader reader)
         {
-            foreach (var cr in catalogueFile.CatalogueRecords)
+            CatalogueFile = new CatalogueFile(reader);
+
+            foreach (var cr in CatalogueFile.CatalogueRecords)
             {
-                Catalogue catalog = new Catalogue(this, cr, catalogueFile);
+                Catalogue catalog = new Catalogue(cr);
                 uint key = catalog.RecordIdentificationNumber;
                 if (!ExchangeSetFiles.ContainsKey(key) || !BaseFiles.ContainsKey(key))
                 {
-                    if (catalog.fileName.EndsWith(".000"))
+                    if (catalog.FileName.EndsWith(".000"))
                     {
                         BaseFiles.Add(key, catalog);
                     }
                     else
+                    {
                         ExchangeSetFiles.Add(key, catalog);
+                    }
                 }
             }
-        }
-
-        public List<Feature> GetFeaturesOfClass(S57Obj ObjectCode)
-        {
-            List<Feature> tempList = new List<Feature>();
-            //foreach (var feat in baseFile.eFeatureRecords)
-            foreach (var feat in baseFile.eFeatureObjects)
-            {
-                if (feat.Value.ObjectCode == ObjectCode)
-                    tempList.Add(feat.Value);
-            }
-            return tempList;
-        }
-
-        public List<Feature> GetFeaturesOfClasses(S57Obj[] ObjectCodes)
-        {
-            List<Feature> tempList = new List<Feature>();
-            //foreach (var feat in baseFile.eFeatureRecords)
-            foreach (var feat in baseFile.eFeatureObjects)
-            {
-                foreach (var ObjectCode in ObjectCodes)
-                {
-                    if (ObjectCode == feat.Value.ObjectCode)
-                        tempList.Add(feat.Value);
-                }
-            }
-            return tempList;
         }
     }
 }
