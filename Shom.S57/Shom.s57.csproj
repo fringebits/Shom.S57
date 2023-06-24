@@ -86,7 +86,7 @@
     <Compile Include="VectorRecordPointer.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Trailwerks\Modules\SimpleLogger\SimpleLogger\SimpleLogger.csproj">
+    <ProjectReference Include="..\..\SimpleLogger\SimpleLogger\SimpleLogger.csproj">
       <Project>{CF8C9230-CC66-43DF-8070-01EB53978B5E}</Project>
       <Name>SimpleLogger</Name>
     </ProjectReference>

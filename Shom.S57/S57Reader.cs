@@ -81,7 +81,7 @@ namespace S57
 
         public Cell Read(ZipArchive archive, string mapName, bool ApplyUpdates)
         {
-            Logger.Log($"Read({archive}, {mapName}, {ApplyUpdates}");
+            Logger.Log($"Read({mapName}, ApplyUpdates={ApplyUpdates}");
             mapName = Path.GetFileName(mapName);
             string basename = Path.GetFileNameWithoutExtension(mapName);
 
@@ -91,6 +91,7 @@ namespace S57
                 var extension = Path.GetExtension(entry.Name);
                 var index = uint.Parse(extension.Substring(1));
                 updatefiles.Add(index, entry);
+                Logger.Log($"\t{index} -- {entry.Name}");
             }
 
             // process the first map (better be 000)
