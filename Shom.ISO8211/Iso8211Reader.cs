@@ -1,39 +1,41 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
-
 namespace Shom.ISO8211
 {
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Text;
+    using SimpleLogger;
+
     public class Iso8211Reader : IDisposable
     {
         private const byte UnitTerminator = 0x1F;
         private const byte FieldTerminator = 0x1E;
-        const int sizeOfRecordLeader = 24;
-        int currentFileOffset;
-        ArraySegment<byte> readRecord;
-        public List<string> tagcollector=new List<string>();
+        private const int sizeOfRecordLeader = 24;
+        private int CurrentFileOffset;
+        private ArraySegment<byte> readRecord;
+        private readonly byte[] FileByteArray;
 
-        private readonly byte[] m_fileByteArray;
-
-        // #TODO: create a version of this that reads from a stream.
-        public Iso8211Reader(byte[] FileByteArray)
+        public Iso8211Reader(Stream stream)
         {
+            using(var memory = new MemoryStream())
+            {
+                stream.CopyTo(memory);
+                this.FileByteArray = memory.ToArray();
+            }
 
-            m_fileByteArray = FileByteArray;
-            currentFileOffset = 0;
-            //First record in the file is always the Data Descriptive Record
+            CurrentFileOffset = 0;
             DataDescriptiveRecord = ReadDataDescriptiveRecord();
         }
 
         public DataDescriptiveRecord DataDescriptiveRecord { get; private set; }
 
+        private List<string> TagCollector { get; set; } = new List<string>();  // #unused??
 
         private DataDescriptiveRecord ReadDataDescriptiveRecord()
         {
             var rec = new DataDescriptiveRecord();
-            readRecord = new ArraySegment<byte>(m_fileByteArray, currentFileOffset, sizeOfRecordLeader);
-            currentFileOffset += sizeOfRecordLeader;
+            readRecord = new ArraySegment<byte>(FileByteArray, CurrentFileOffset, sizeOfRecordLeader);
+            CurrentFileOffset += sizeOfRecordLeader;
             rec.Leader = ReadRecordLeader(readRecord);
             rec.Directory = ReadRecordDirectory(rec.Leader);
             if (rec.Leader.LeaderIdentifier != 'L')
@@ -47,17 +49,25 @@ namespace Shom.ISO8211
 
         public DataRecord ReadDataRecord()
         {
-            if (m_fileByteArray.Length - currentFileOffset < sizeOfRecordLeader) //detect  stream end when readbytes returns 0 works with stream of known length (e.g. files) and unknown length
-                return null;
-            else
+            if (FileByteArray.Length - CurrentFileOffset < sizeOfRecordLeader) //detect  stream end when readbytes returns 0 works with stream of known length (e.g. files) and unknown length
             {
-                var rec = new DataRecord();
-                readRecord = new ArraySegment<byte>(m_fileByteArray, currentFileOffset, sizeOfRecordLeader);
-                currentFileOffset += sizeOfRecordLeader;
-                rec.Leader = ReadRecordLeader(readRecord);
-                rec.Directory = ReadRecordDirectory(rec.Leader);
-                rec.Fields = ReadDataRecordFields(rec.Leader, rec.Directory);
-                return rec;
+                return null;
+            }
+
+            var rec = new DataRecord();
+            readRecord = new ArraySegment<byte>(FileByteArray, CurrentFileOffset, sizeOfRecordLeader);
+            CurrentFileOffset += sizeOfRecordLeader;
+            rec.Leader = ReadRecordLeader(readRecord);
+            rec.Directory = ReadRecordDirectory(rec.Leader);
+            rec.Fields = ReadDataRecordFields(rec.Leader, rec.Directory);
+            return rec;
+        }
+
+        public void OutToLog()
+        {
+            foreach(var tag in this.TagCollector)
+            {
+                Logger.Log($"\t{tag}");
             }
         }
 
@@ -69,16 +79,16 @@ namespace Shom.ISO8211
         private RecordDirectory ReadRecordDirectory(RecordLeader leader)
         {
             int count = 0;
-            for (int i = currentFileOffset; i < m_fileByteArray.Length; i++)
+            for (int i = CurrentFileOffset; i < FileByteArray.Length; i++)
             {
-                if (m_fileByteArray[currentFileOffset + count] == FieldTerminator)
+                if (FileByteArray[CurrentFileOffset + count] == FieldTerminator)
                 {
                     break;
                 }
                 count++;
             }
-            ArraySegment<byte> bytes = new ArraySegment<byte>(m_fileByteArray, currentFileOffset, count);
-            currentFileOffset += count+1;
+            ArraySegment<byte> bytes = new ArraySegment<byte>(FileByteArray, CurrentFileOffset, count);
+            CurrentFileOffset += count+1;
             return new RecordDirectory(leader.EntryMap.SizeOfTagField, leader.EntryMap.SizeOfLengthField,
                            leader.EntryMap.SizeOfPositionField, bytes);
         }
@@ -116,8 +126,8 @@ namespace Shom.ISO8211
                 {
                     //This is a special field tag - the file control field
                     //byte[] fieldControls = bufferedReader.ReadBytes(leader.FieldControlLength);
-                    ArraySegment<byte> fieldControls = new ArraySegment<byte>(m_fileByteArray, currentFileOffset, leader.FieldControlLength);
-                    currentFileOffset += leader.FieldControlLength;
+                    ArraySegment<byte> fieldControls = new ArraySegment<byte>(FileByteArray, CurrentFileOffset, leader.FieldControlLength);
+                    CurrentFileOffset += leader.FieldControlLength;
                     string externalFileTitle = ReadStringToTerminator();
                     string listOfFieldTagPairs = ReadStringToTerminator();
                     var fcf = new FileControlField( entry.FieldTag, fieldControls, externalFileTitle, listOfFieldTagPairs, leader.EntryMap.SizeOfTagField );
@@ -127,8 +137,8 @@ namespace Shom.ISO8211
                 else
                 {
                    //byte[] fieldControls = bufferedReader.ReadBytes(leader.FieldControlLength);
-                    ArraySegment<byte> fieldControls = new ArraySegment<byte>(m_fileByteArray, currentFileOffset, leader.FieldControlLength);
-                    currentFileOffset += leader.FieldControlLength;
+                    ArraySegment<byte> fieldControls = new ArraySegment<byte>(FileByteArray, CurrentFileOffset, leader.FieldControlLength);
+                    CurrentFileOffset += leader.FieldControlLength;
                     string dataFieldName = ReadStringToTerminator();
                     string arrayDescriptor = ReadStringToTerminator();
                     string formatControls = ReadStringToTerminator();
@@ -170,8 +180,8 @@ namespace Shom.ISO8211
                     throw new Exception("Unable to find data descriptive field");
                 }
 
-                ArraySegment<byte> temp = new ArraySegment<byte>(m_fileByteArray, currentFileOffset, entry.FieldLength);
-                currentFileOffset += entry.FieldLength;
+                ArraySegment<byte> temp = new ArraySegment<byte>(FileByteArray, CurrentFileOffset, entry.FieldLength);
+                CurrentFileOffset += entry.FieldLength;
 
                 var df = new DataField(entry.FieldTag, (DataDescriptiveField)dataDescriptiveField, temp);
 
@@ -184,17 +194,17 @@ namespace Shom.ISO8211
         private string ReadStringToTerminator()
         {
             int count = 0;
-            for(int i = currentFileOffset; i<m_fileByteArray.Length; i++)
+            for(int i = CurrentFileOffset; i<FileByteArray.Length; i++)
             {
-                if (m_fileByteArray[currentFileOffset + count] == FieldTerminator || m_fileByteArray[currentFileOffset + count] == UnitTerminator)
+                if (FileByteArray[CurrentFileOffset + count] == FieldTerminator || FileByteArray[CurrentFileOffset + count] == UnitTerminator)
                 {
                     break;
                 }
                 count++;
             }
-            ArraySegment<byte> bytes = new ArraySegment<byte>(m_fileByteArray, currentFileOffset, count);
+            ArraySegment<byte> bytes = new ArraySegment<byte>(FileByteArray, CurrentFileOffset, count);
             string temp = Encoding.ASCII.GetString(bytes.Array, bytes.Offset, count);
-            currentFileOffset += count+1;
+            CurrentFileOffset += count+1;
             return temp;
         }
 

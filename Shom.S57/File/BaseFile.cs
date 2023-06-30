@@ -22,8 +22,9 @@ namespace S57.File
 
         //2 dictinaries using either NAMEKey or LongName to point to a given value
         //reasons: features are referenced via LongName, update files referenced using NAMEKey
-        private Dictionary<NAMEkey, Feature> eFeatureRecords; 
-        public Dictionary<LongName, Feature> eFeatureObjects { get; private set; }
+        public Dictionary<LongName, Feature> Features => eFeatureObjects;
+        private Dictionary<LongName, Feature> eFeatureObjects { get; set; }
+        private Dictionary<NAMEkey, Feature>  eFeatureRecords;
 
         private Dictionary<NAMEkey, Vector> eVectorRecords;
 
@@ -133,7 +134,7 @@ namespace S57.File
                         rcid = frid.subFields.GetUInt32(0, "RCID");
                         //consider using lnam as key (from FOID field), challenge: update files deleting a feature record do not encode lnam of that feature record
                         var key = new NAMEkey(rcnm, rcid); 
-                        Feature newFeat = new Feature(key, nextRec);
+                        var newFeat = new Feature(key, nextRec);
                         eFeatureRecords.Add(key, newFeat);
                     }
                 }
@@ -179,8 +180,9 @@ namespace S57.File
             //essential to speadup Feature lookup because Features are linked via LongName
             foreach (var eFeat in eFeatureRecords)
             {
-                eFeatureObjects.Add(eFeat.Value.lnam, eFeat.Value);
+                eFeatureObjects.Add(eFeat.Value.LongName, eFeat.Value);
             }
+
             foreach (var eFeat in eFeatureObjects)
             {
                 if (eFeat.Value.enhFeaturePtrs != null)
@@ -304,16 +306,16 @@ namespace S57.File
             Line line = new Line();
             int ycoo = sg2d.subFields.TagIndex.IndexOf("YCOO");
             int xcoo = sg2d.subFields.TagIndex.IndexOf("XCOO");
-            line.points.Add(_eVec.Value.enhVectorPtrs.VectorList[0].geometry as Point); //will fail when geometry of pointed Vector has not been calculated yet
+            line.Points.Add(_eVec.Value.enhVectorPtrs.VectorList[0].geometry as Point); //will fail when geometry of pointed Vector has not been calculated yet
             for (int i = 0; i < sg2d.subFields.Values.Count; i++)
             {
                 var point = new Point();
                 subFieldRow = sg2d.subFields.Values[i];
                 point.Y = subFieldRow.GetDouble(ycoo) / coordinateMultiplicationFactor;
                 point.X = subFieldRow.GetDouble(xcoo) / coordinateMultiplicationFactor;
-                line.points.Add(point);
+                line.Points.Add(point);
             }
-            line.points.Add(_eVec.Value.enhVectorPtrs.VectorList[1].geometry as Point);
+            line.Points.Add(_eVec.Value.enhVectorPtrs.VectorList[1].geometry as Point);
             return line;
         }
         public void ApplyUpdateFile(UpdateFile updateFile)

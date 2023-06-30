@@ -28,6 +28,7 @@ namespace S57
         public VectorRecordPointer enhVectorPtrs = null;
         public Geometry geometry;
         public List<SoundingData> SoundingList;
+
         public Geometry Geometry
         {
             get
@@ -57,16 +58,18 @@ namespace S57
                                 Vector vector = enhVectorPtrs.VectorList[i];
                                 if (vector != null)
                                 {
-                                    ((Line)geometry).points.Add(vector.Geometry as Point);
+                                    ((Line)geometry).Points.Add(vector.Geometry as Point);
                                 }
                             }
                         }
                     }
                     return geometry;
                 }
+
                 return null;
             }
         }
+
         public Vector(NAMEkey _namekey, DataRecord _VectorRecord)
         {
             namekey = _namekey;
@@ -80,6 +83,7 @@ namespace S57
                 Attributes = GetAttributes(attv);
             }
         }
+
         public static Dictionary<S57Att, string> GetAttributes(DataField field)
         {
             SFcontainer[] subFieldRow;

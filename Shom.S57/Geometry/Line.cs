@@ -1,16 +1,16 @@
-﻿using System;
+﻿using SimpleLogger;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
 namespace S57
 {
-    public class Line : Geometry
+    public class Line : PointArray
     {
-        public List<Point> points = new List<Point>();
-        //public void Reverse()
-        //{
-        //    this.points.Reverse();
-        //}
+        public override string ToString()
+        {
+            return $"Line {this.Points.Count}";
+        }
     }
 }

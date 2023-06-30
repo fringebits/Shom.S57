@@ -7,6 +7,7 @@ namespace S57
     public class VectorRecordPointer : SubFields
     {
         public List<Vector> VectorList;
+
         public VectorRecordPointer(SubFields vrpt)
         {
             this.TagIndex = vrpt.TagIndex;

@@ -2,7 +2,7 @@ using System;
 
 namespace S57
 {
-    public enum RecordName1
+    public enum RecordNameType
     {
         DataSetGeneralInformation = 10,
         DS = 10,

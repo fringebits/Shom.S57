@@ -4,6 +4,8 @@ using System.Globalization;
 using System.Text;
 using Shom.ISO8211;
 using S57.File;
+using System.Linq;
+using SimpleLogger;
 
 namespace S57
 {
@@ -17,24 +19,105 @@ namespace S57
     //          <R> - FFPT Feature Record To Feature Object Pointer
     //          FSPC Feature Record To Spatial Record Pointer Control
     //          <R> - FSPT Feature to Spatial Record Pointer
-    public class Feature
+    public class Feature : Utilities.IOutToLog
     {
+        public Feature(NAMEkey _namekey, DataRecord _FeatureRecord)
+        {
+            NameKey = _namekey;
+            FeatureRecord = _FeatureRecord;
+            var fspt = _FeatureRecord.Fields.GetFieldByTag("FSPT");
+            if (fspt != null)
+            {
+                enhVectorPtrs = new VectorRecordPointer(fspt.subFields);
+            }
+
+            var ffpt = _FeatureRecord.Fields.GetFieldByTag("FFPT");
+            if (ffpt != null)
+            {
+                enhFeaturePtrs = new FeatureObjectPointer(ffpt.subFields);
+            }
+
+            // FRID : Feature Record Identifier
+            var frid = _FeatureRecord.Fields.GetFieldByTag("FRID");
+            if (frid != null)
+            {
+                Primitive = (GeometricPrimitive)frid.subFields.GetUInt32(0, "PRIM");
+                Group = frid.subFields.GetUInt32(0, "GRUP");
+                ObjectCode = (S57Obj)frid.subFields.GetUInt32(0, "OBJL");
+            }
+
+            // FOID : Feature Object Identifier
+            var foid = _FeatureRecord.Fields.GetFieldByTag("FOID");
+            if (foid != null)
+            {
+                var subFieldRow = foid.subFields.Values[0];
+                var tagLookup = foid.subFields.TagIndex;
+                var agen = subFieldRow.GetUInt32(tagLookup.IndexOf("AGEN"));
+                var fidn = subFieldRow.GetUInt32(tagLookup.IndexOf("FIDN"));
+                var fids = subFieldRow.GetUInt32(tagLookup.IndexOf("FIDS"));
+                this.LongName = new LongName(agen, fidn, fids);
+            }
+
+            // ATTF : Attributes
+            var attr = _FeatureRecord.Fields.GetFieldByTag("ATTF");
+            if (attr != null)
+            {
+                Attributes = Vector.GetAttributes(attr);
+            }
+
+            // NATF : National attributes NATF.
+            var natf = _FeatureRecord.Fields.GetFieldByTag("NATF");
+            if (natf != null)
+            {
+                var natfAttr = Vector.GetAttributes(natf);
+                if (Attributes != null)
+                {
+                    foreach (var entry in natfAttr)
+                    {
+                        Attributes.Add(entry.Key, entry.Value);
+                    }
+                }
+                else
+                {
+                    Attributes = natfAttr;
+                }
+            }
+        }
+
         // FRID : Feature Record Identifier Field
-        public NAMEkey namekey;
-        public DataRecord FeatureRecord;
-        public Dictionary<S57Att, string> Attributes;     // ATTF Attributes
-        public VectorRecordPointer enhVectorPtrs = null;
-        public FeatureObjectPointer enhFeaturePtrs = null;
-        public GeometricPrimitive Primitive;            // PRIM        // FOID : 
-        public uint Group;                              // GRUP     
-        public S57Obj ObjectCode;                         // OBJL
-        public LongName lnam;                           // FOID Object Identifier Field
-        // some private variables  
-        uint agen;
-        uint fidn;
-        uint fids;
-        SFcontainer[] subFieldRow;
-        List<string> tagLookup;
+        public NAMEkey NameKey { get; private set; }
+        public DataRecord FeatureRecord { get; private set; }
+        public Dictionary<S57Att, string> Attributes { get; private set; }     // ATTF Attributes
+        public VectorRecordPointer enhVectorPtrs { get; private set; }
+        public FeatureObjectPointer enhFeaturePtrs { get; private set; }
+        public GeometricPrimitive Primitive { get; private set; }            // PRIM        // FOID : 
+        public uint Group { get; private set; }                              // GRUP     
+        public S57Obj ObjectCode { get; private set; }                         // OBJL
+        public LongName LongName { get; private set; }                           // FOID Object Identifier Field
+
+        // OBJNAM
+        public string Name => GetAttribute(S57Att.OBJNAM);
+
+        public Geometry Geometry => GetGeometry(true); 
+
+        public void OutToLog(int depth)
+        {
+            Logger.Log($"Feature Name={Name}, NameKey={NameKey}, LongName={LongName}");
+            if (Attributes != null)
+            {
+                Logger.Log($"\tAttributes: ({Attributes.Count})");
+                foreach(var pair in Attributes)
+                {
+                    Logger.Log($"\t\t{pair.Key} = {pair.Value}");
+                }
+            }
+
+            if (this.Geometry != null)
+            {
+                this.Geometry.OutToLog(depth+1);
+            }
+
+        }
 
         public List<Dictionary<S57Att, string>> GetSpacialAttributes()
         {
@@ -45,7 +128,11 @@ namespace S57
             List<Dictionary<S57Att, string>> temp = new List<Dictionary<S57Att, string>>();
             if (Primitive == GeometricPrimitive.Point)
             {
-                if (enhVectorPtrs.VectorList[0] == null || enhVectorPtrs.VectorList[0].Attributes == null) return null;
+                if (enhVectorPtrs.VectorList[0] == null || enhVectorPtrs.VectorList[0].Attributes == null)
+                {
+                    return null;
+                }
+
                 temp.Add(enhVectorPtrs.VectorList[0].Attributes);
                 return temp;
             }
@@ -53,7 +140,11 @@ namespace S57
             {
                 for (int i = 0; i < enhVectorPtrs.VectorList.Count; i++)
                 {
-                    if (enhVectorPtrs.VectorList[i] == null) continue;
+                    if (enhVectorPtrs.VectorList[i] == null)
+                    {
+                        continue;
+                    }
+
                     ////note: only the contributing line and area features appear to have QUAPOS set. the contributing points have Attributes=null
                     //for (int j = 0; j < enhVectorPtrs.VectorList[i].enhVectorPtrs.VectorList.Count; j++)
                     //{
@@ -61,15 +152,25 @@ namespace S57
                     //    if (enhVectorPtrs.VectorList[i].enhVectorPtrs.VectorList[j].Attributes == null) continue;
                     //    temp.Add(enhVectorPtrs.VectorList[i].enhVectorPtrs.VectorList[j].Attributes); 
                     //}
-                    if (enhVectorPtrs.VectorList[i] == null) continue;
-                    if (enhVectorPtrs.VectorList[i].Attributes == null) continue;
+
+                    if (enhVectorPtrs.VectorList[i] == null) 
+                    {
+                        continue;
+                    }
+
+                    if (enhVectorPtrs.VectorList[i].Attributes == null)
+                    {
+                        continue;
+                    }
+
                     temp.Add(enhVectorPtrs.VectorList[i].Attributes);
                 }
                 return temp;
             }
             return null; //return value when feature is neither point, line or area
         }
-        public Geometry GetGeometry(bool returnFlatPolygon)
+
+        private Geometry GetGeometry(bool returnFlatPolygon)
         {
             int count;
             switch (Primitive)
@@ -96,7 +197,7 @@ namespace S57
 
                             //next, check if edge needs to be reversed for the intended usage 
                             //Do this on a copy to not mess up original record wich might be used elsewhere
-                            var edge = new List<Point>((enhVectorPtrs.VectorList[i].Geometry as Line).points);
+                            var edge = new List<Point>((enhVectorPtrs.VectorList[i].Geometry as Line).Points);
                             if (enhVectorPtrs.Values[i].GetUInt32(ornt) == (uint)Orientation.Reverse)
                             {
                                 edge.Reverse();
@@ -110,19 +211,19 @@ namespace S57
                             }
 
                             //now check if Contour has already accumulated points, if not just add current edge
-                            count = Contour.points.Count;
+                            count = Contour.Points.Count;
                             if (count > 0)
                             {
                                 //now check if existing contour should be extended
-                                if (Contour.points[count - 1] == StartNode.Geometry as Point)
+                                if (Contour.Points[count - 1] == StartNode.Geometry as Point)
                                 {
-                                    Contour.points.AddRange(edge.GetRange(1, edge.Count - 1));
+                                    Contour.Points.AddRange(edge.GetRange(1, edge.Count - 1));
                                 }
                             }
                             else
                             {
                                 //add current edge points to new contour
-                                Contour.points.AddRange(edge);
+                                Contour.Points.AddRange(edge);
                             }
                         }
                         //done, finish up and return
@@ -148,7 +249,7 @@ namespace S57
 
                                 //next, check if edge needs to be reversed for the intended usage 
                                 //Do this on a copy to not mess up original record wich might be used elsewhere
-                                var edge = new List<Point>((enhVectorPtrs.VectorList[i].Geometry as Line).points);
+                                var edge = new List<Point>((enhVectorPtrs.VectorList[i].Geometry as Line).Points);
                                 if (enhVectorPtrs.Values[i].GetUInt32(ornt) == (uint)Orientation.Reverse)
                                 {
                                     edge.Reverse();
@@ -162,23 +263,23 @@ namespace S57
                                 }
 
                                 //now check if Contour has already accumulated points, if not just add current edge
-                                count = Contour.points.Count;
+                                count = Contour.Points.Count;
                                 if (count > 0)
                                 {
                                     //now check if existing contour should be extended, or if also a holeIndex indicating start of next interior boundery should be added
-                                    if (Contour.points[count - 1] == StartNode.Geometry as Point)
+                                    if (Contour.Points[count - 1] == StartNode.Geometry as Point)
                                     {
-                                        Contour.points.AddRange(edge.GetRange(1, edge.Count - 1));
+                                        Contour.Points.AddRange(edge.GetRange(1, edge.Count - 1));
                                     }
                                     else
                                     {
                                         //verify that polygone is closed last point in list equals first
-                                        if (Contour.points[count - 1] == Contour.points[currentContourStartIndex])
+                                        if (Contour.Points[count - 1] == Contour.Points[currentContourStartIndex])
                                         {
-                                            Contour.holesIndices.Add(count);
+                                            Contour.HolesIndices.Add(count);
                                             currentContourStartIndex=count;
                                             //start accumulatating hole points with current edge
-                                            Contour.points.AddRange(edge);
+                                            Contour.Points.AddRange(edge);
                                         }
                                         //else
                                         //{
@@ -189,7 +290,7 @@ namespace S57
                                 else
                                 {
                                     //add current edge points to new contour
-                                    Contour.points.AddRange(edge);
+                                    Contour.Points.AddRange(edge);
                                 }
                             }
                             return Contour;
@@ -212,7 +313,7 @@ namespace S57
 
                                 //next, check if edge needs to be reversed for the intended usage 
                                 //Do this on a copy to not mess up original record wich might be used elsewhere
-                                var edge = new List<Point>((enhVectorPtrs.VectorList[i].Geometry as Line).points);
+                                var edge = new List<Point>((enhVectorPtrs.VectorList[i].Geometry as Line).Points);
                                 if (enhVectorPtrs.Values[i].GetUInt32(ornt) == (uint)Orientation.Reverse)
                                 {
                                     edge.Reverse();
@@ -226,19 +327,19 @@ namespace S57
                                 }
 
                                 //now check if Contour has already accumulated points, if not just add current edge
-                                count = Contour.points.Count;
+                                count = Contour.Points.Count;
                                 if (count > 0)
                                 {
                                     //now check if existing contour should be extended, or if a new one for the next interior boundery should be started 
-                                    if (Contour.points[count - 1] == StartNode.Geometry as Point)
+                                    if (Contour.Points[count - 1] == StartNode.Geometry as Point)
                                     {
-                                        Contour.points.AddRange(edge.GetRange(1, edge.Count - 1));
+                                        Contour.Points.AddRange(edge.GetRange(1, edge.Count - 1));
                                     }
                                     else
                                     {
                                         //done, add current polygon boundery to ContourSet 
                                         //verify that polygone is closed last point in list equals first
-                                        if (Contour.points[count - 1] == Contour.points[0])
+                                        if (Contour.Points[count - 1] == Contour.Points[0])
                                         {
                                             ContourSet.Areas.Add(Contour);
                                         }
@@ -248,13 +349,13 @@ namespace S57
                                         //}
                                         //initialize new contour to accumulate next boundery, add current edge to it
                                         Contour = new Area();
-                                        Contour.points.AddRange(edge);
+                                        Contour.Points.AddRange(edge);
                                     }
                                 }
                                 else
                                 {
                                     //add current edge points to new contour
-                                    Contour.points.AddRange(edge);
+                                    Contour.Points.AddRange(edge);
                                 }
                             }
                             //done, finish up and return
@@ -263,6 +364,7 @@ namespace S57
                         }
                     }
             }
+
             return null;
         }
         public List<SoundingData> ExtractSoundings()
@@ -270,58 +372,14 @@ namespace S57
             return enhVectorPtrs.VectorList[0].SoundingList;
         }
 
-        public Feature(NAMEkey _namekey, DataRecord _FeatureRecord)
+        protected string GetAttribute(S57Att attr, string fallback = null)
         {
-            namekey = _namekey;
-            FeatureRecord = _FeatureRecord;
-            var fspt = _FeatureRecord.Fields.GetFieldByTag("FSPT");
-            if (fspt != null)
-                enhVectorPtrs = new VectorRecordPointer(fspt.subFields);
-            var ffpt = _FeatureRecord.Fields.GetFieldByTag("FFPT");
-            if (ffpt != null)
-                enhFeaturePtrs = new FeatureObjectPointer(ffpt.subFields);
-            // FRID : Feature Record Identifier
-            var frid = _FeatureRecord.Fields.GetFieldByTag("FRID");
-            if (frid != null)
+            if (Attributes != null && Attributes.TryGetValue(attr, out var result))
             {
-                Primitive = (GeometricPrimitive)frid.subFields.GetUInt32(0, "PRIM");
-                Group = frid.subFields.GetUInt32(0, "GRUP");
-                ObjectCode = (S57Obj)frid.subFields.GetUInt32(0, "OBJL");
+                return result;
             }
-            // FOID : Feature Object Identifier
-            var foid = _FeatureRecord.Fields.GetFieldByTag("FOID");
-            if (foid != null)
-            {
-                subFieldRow = foid.subFields.Values[0];
-                tagLookup = foid.subFields.TagIndex;
-                agen = subFieldRow.GetUInt32(tagLookup.IndexOf("AGEN"));
-                fidn = subFieldRow.GetUInt32(tagLookup.IndexOf("FIDN"));
-                fids = subFieldRow.GetUInt32(tagLookup.IndexOf("FIDS"));
-                lnam = new LongName(agen, fidn, fids);
-            }
-            // ATTF : Attributes
-            var attr = _FeatureRecord.Fields.GetFieldByTag("ATTF");
-            if (attr != null)
-            {
-                Attributes = Vector.GetAttributes(attr);
-            }
-            // NATF : National attributes NATF.
-            var natf = _FeatureRecord.Fields.GetFieldByTag("NATF");
-            if (natf != null)
-            {
-                var natfAttr = Vector.GetAttributes(natf);
-                if (Attributes != null)
-                {
-                    foreach (var entry in natfAttr)
-                    {
-                        Attributes.Add(entry.Key, entry.Value);
-                    }
-                }
-                else
-                {
-                    Attributes = natfAttr;
-                }
-            }
+
+            return fallback;
         }
-    }   
+    }
 }

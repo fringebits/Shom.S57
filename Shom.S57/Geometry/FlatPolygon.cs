@@ -1,10 +1,15 @@
-﻿using System.Collections.Generic;
-
-namespace S57
+﻿namespace S57
 {
-    public class FlatPolygon : Geometry
+    using SimpleLogger;
+    using System.Collections.Generic;
+
+    public class FlatPolygon : PointArray
     {
-        public List<Point> points = new List<Point>();
-        public List<int> holesIndices = new List<int>();
+        public List<int> HolesIndices { get; private set; } = new List<int>();
+
+        public override string ToString()
+        {
+            return $"FlatPolygon Points={this.Points.Count}, Holes={this.HolesIndices.Count}";
+        }
     }
 }

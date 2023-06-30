@@ -1,29 +1,38 @@
 ﻿using Shom.ISO8211;
 using S57.File;
 using System.Collections.Generic;
+using MapCore;
+using Utilities;
+using SimpleLogger;
 
 namespace S57
 {
-    public class Catalogue
+    public class Catalogue : IOutToLog
     {
         public DataRecord DataRecord { get; private set; }
         
-        public uint RecordIdentificationNumber;
-        
+        public uint RecordIdentificationNumber { get; private set; }
+
         public string FileName { get; private set; }
 
-        public string fileLongName;
-        public uint NavigationalPurpose;
-        public uint CompilationScale;
-        public double southernMostLatitude;
-        public double westernMostLongitude;
-        public double northernMostLatitude;
-        public double easternMostLongitude;
+        public string FileLongName { get; private set; }
+
+        public uint NavigationalPurpose { get; private set; }
+
+        public uint CompilationScale { get; private set; }
+
+        public BoundingBox BoundingBox { get; private set; }
         
         public Catalogue(DataRecord cr)
         {
             this.DataRecord = cr;
             BuildFromDataRecord();
+        }
+
+        public void OutToLog(int depth)
+        {
+            Logger.Log($"Catalogue {this.FileName}");
+            Logger.Log($"{this.BoundingBox}");
         }
 
         private void BuildFromDataRecord()
@@ -36,12 +45,12 @@ namespace S57
                 var tagLookup = catd.subFields.TagIndex;
                 RecordIdentificationNumber = (uint)subFieldRow.GetInt32(tagLookup.IndexOf("RCID")); //this one ist stored as integer, so implementing GetUint32 to do merely a cast will fail
                 FileName = subFieldRow.GetString(tagLookup.IndexOf("FILE"));
-                fileLongName = subFieldRow.GetString(tagLookup.IndexOf("LFIL"));                
-                southernMostLatitude = subFieldRow.GetDouble(tagLookup.IndexOf("SLAT"));
-                westernMostLongitude = subFieldRow.GetDouble(tagLookup.IndexOf("WLON"));
-                northernMostLatitude = subFieldRow.GetDouble(tagLookup.IndexOf("NLAT"));
-                easternMostLongitude = subFieldRow.GetDouble(tagLookup.IndexOf("ELON"));
+                FileLongName = subFieldRow.GetString(tagLookup.IndexOf("LFIL"));
+
+                this.BoundingBox = new BoundingBox(
+                    new Location(subFieldRow.GetDouble(tagLookup.IndexOf("SLAT")), subFieldRow.GetDouble(tagLookup.IndexOf("WLON"))),
+                    new Location(subFieldRow.GetDouble(tagLookup.IndexOf("NLAT")), subFieldRow.GetDouble(tagLookup.IndexOf("ELON"))));
             }   
-        }        
+        }
     }
 }

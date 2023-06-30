@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace S57
 {
@@ -10,10 +11,26 @@ namespace S57
         public LongName(byte[] bytes)
         {
             if (bytes.Length != 8)
-                throw new ArgumentException("Expected byte array with 8 items");
-            ProducingAgency = (uint)(bytes[0] + (bytes[1] * 256));
-            FeatureIdentificationNumber = (uint)(bytes[2] + (bytes[3] * 256) + (bytes[4] * 65536) + (bytes[5] * 16777216));
-            FeatureIdentificationSubdivision = (uint)(bytes[6] + (bytes[7] * 256));
+            {
+                throw new ArgumentException("Expected byte array with 8 bytes");
+            }
+
+            var values = bytes.Select(b => (uint)b).ToArray();
+
+            this.ProducingAgency = values[0] | values[1] << 8;
+
+            this.FeatureIdentificationNumber = values[2] | values[3] << 8 | values[4] << 16 | values[5] << 24;
+
+            this.FeatureIdentificationSubdivision = values[6] | values[7] << 8;
+
+            var pa = (uint)(bytes[0] + (bytes[1] * 256));
+            var fin = (uint)(bytes[2] + (bytes[3] * 256) + (bytes[4] * 65536) + (bytes[5] * 16777216));
+            var fis = (uint)(bytes[6] + (bytes[7] * 256));
+
+            if (pa != ProducingAgency || fin != FeatureIdentificationNumber || fis != FeatureIdentificationSubdivision)
+            {
+                throw new Exception("Bad calculations.");
+            }
         }
 
         public LongName(uint agen, uint fidn, uint fids)
@@ -22,12 +39,19 @@ namespace S57
             FeatureIdentificationNumber = fidn;
             FeatureIdentificationSubdivision = fids;
         }
+
+        public override string ToString()
+        {
+            return $"{ProducingAgency}-{FeatureIdentificationNumber}-{FeatureIdentificationSubdivision}";
+        }
+
         public bool Equals(LongName other)
         {
             return this.ProducingAgency == other.ProducingAgency && 
                 this.FeatureIdentificationNumber == other.FeatureIdentificationNumber &&
                 this.FeatureIdentificationSubdivision == other.FeatureIdentificationSubdivision;
         }
+
         public override bool Equals(object obj)
         {
             if (ReferenceEquals(null, obj))
@@ -36,6 +60,7 @@ namespace S57
             }
             return obj is LongName && Equals((LongName)obj);
         }
+
         public override int GetHashCode()
         {
             int hash = 17;

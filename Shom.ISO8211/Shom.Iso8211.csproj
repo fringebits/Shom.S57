@@ -9,9 +9,10 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Shom.ISO8211</RootNamespace>
     <AssemblyName>Shom.ISO8211</AssemblyName>
-    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -64,6 +65,12 @@
     <Compile Include="RecordLeader.cs" />
     <Compile Include="SubField.cs" />
     <Compile Include="SubFieldDefinition.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\SimpleLogger\SimpleLogger\SimpleLogger.csproj">
+      <Project>{cf8c9230-cc66-43df-8070-01eb53978b5e}</Project>
+      <Name>SimpleLogger</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

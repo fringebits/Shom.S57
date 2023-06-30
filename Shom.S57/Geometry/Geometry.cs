@@ -1,11 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
+﻿
 namespace S57
 {
-    public abstract class Geometry
-    { }
+    using MapCore;
+    using Shom.S57.Geometry;
+    using Utilities;
+    using SimpleLogger;
 
+    public abstract class Geometry : IGeometry, IOutToLog
+    {
+        public virtual void OutToLog(int depth)
+        {
+            Logger.Log($"{this}");
+        }
+
+        //public abstract BoundingBox BoundingBox { get; }
+    }
 }

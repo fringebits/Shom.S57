@@ -7,6 +7,7 @@ using S57.File;
 using System.Diagnostics;
 using System.Linq;
 using SimpleLogger;
+using Utilities;
 
 namespace S57
 {
@@ -26,62 +27,43 @@ namespace S57
         public Dictionary<uint, Catalogue> ExchangeSetFiles = new Dictionary<uint, Catalogue>();
         public Dictionary<uint, Catalogue> BaseFiles = new Dictionary<uint, Catalogue>();
 
-        byte[] fileByteArray;
-
         public void ReadCatalogue(ZipArchive archive)
         {
             var catalogEntry = archive.Entries.Single(item => item.Name.Equals("CATALOG.031"));
 
             using (var map = catalogEntry.Open())
             {
-                var count = catalogEntry.Length;
-                byte[] fileByteArray = new byte[count]; //consider re-using same byte array for next file to minimize new allocations
-                var memoryStream = new MemoryStream(fileByteArray);
-                map.CopyTo(memoryStream);
-                memoryStream.Dispose();
-                using (var reader = new Iso8211Reader(fileByteArray))
+                using (var reader = new Iso8211Reader(map))
                 {
                     BuildCatalogue(reader);
-
-                    foreach (var bla in reader.tagcollector)
-                        Console.WriteLine(bla);
                 }
             }
         }
 
         public ProductInfo ReadProductInfo(ZipArchive archive, string MapName)
         {
-            Stream S57map = null;
+            ProductInfo result = null;
+
             foreach (ZipArchiveEntry entry in archive.Entries)
             {
                 if (entry.Name.Equals(MapName))
                 {
-                    S57map = entry.Open();
-                    int count = (int)entry.Length;
-                    if (fileByteArray == null)
-                        fileByteArray = new byte[count];
-                    else
+                    using (var map = entry.Open())
+                    using (var reader = new Iso8211Reader(map))
                     {
-                        Array.Clear(fileByteArray, 0, fileByteArray.Length);
-                        Array.Resize(ref fileByteArray, count);
-                    }
-                    MemoryStream memoryStream = new MemoryStream(fileByteArray);
-                    S57map.CopyTo(memoryStream);
-                    memoryStream.Dispose();
-
-                    using (var reader = new Iso8211Reader(fileByteArray))
-                    {
-                        return new ProductInfo(reader);
+                        result = new ProductInfo(reader);
+                        break;
                     }
                 }
             }
 
-            return null;
+            return result;
         }
 
         public Cell Read(ZipArchive archive, string mapName, bool ApplyUpdates)
         {
             Logger.Log($"Read({mapName}, ApplyUpdates={ApplyUpdates}");
+
             mapName = Path.GetFileName(mapName);
             string basename = Path.GetFileNameWithoutExtension(mapName);
 
@@ -96,47 +78,24 @@ namespace S57
 
             // process the first map (better be 000)
             var baseentry = updatefiles.First().Value;
-            var S57map = baseentry.Open();
-            int count = (int)baseentry.Length;
-            if (fileByteArray == null)
-                fileByteArray = new byte[count];
-            else
-            {
-                Array.Clear(fileByteArray,0, fileByteArray.Length);
-                Array.Resize(ref fileByteArray, count);
-            }
-            MemoryStream memoryStream = new MemoryStream(fileByteArray);
-            S57map.CopyTo(memoryStream);
-            memoryStream.Dispose();
-
             BaseFile baseFile = null;
-            using (var reader = new Iso8211Reader(fileByteArray))
+            using (var map = baseentry.Open())
+            using (var reader = new Iso8211Reader(map))
             {
                 baseFile = new BaseFile(reader);
-                foreach (var bla in reader.tagcollector)
-                {
-                    Console.WriteLine(bla);
-                }
+                reader.OutToLog();
             }
-            S57map.Dispose();
 
             if (ApplyUpdates)
             {
                 foreach (var entry in updatefiles.Skip(1))
                 {
-                    var S57update = entry.Value.Open();
-                    count = (int)entry.Value.Length;
-                    Array.Clear(fileByteArray, 0, fileByteArray.Length);
-                    Array.Resize(ref fileByteArray, count);
-                    memoryStream = new MemoryStream(fileByteArray);
-                    S57update.CopyTo(memoryStream);
-                    memoryStream.Dispose();
-                    using (var updatereader = new Iso8211Reader(fileByteArray))
+                    using (var stream = entry.Value.Open())
+                    using (var update = new Iso8211Reader(stream))
                     {
-                        var updateFile = new UpdateFile(updatereader);
+                        var updateFile = new UpdateFile(update);
                         baseFile.ApplyUpdateFile(updateFile);
                     }
-                    S57update.Dispose();
                 }
             }
 
@@ -148,26 +107,6 @@ namespace S57
 
             return cellInfo;
         }
-
-        //public void Read(System.IO.Stream stream)
-        //{
-        //    //Stopwatch timer = new Stopwatch();
-        //    //timer.Start();
-        //    using (var reader = new Iso8211Reader(stream))
-        //    {
-        //        baseFile = new BaseFile(reader);
-        //    }
-        //    //timer.Stop();
-        //    //Console.WriteLine(((double)(timer.Elapsed.TotalMilliseconds)).ToString("0.00 ms"));
-        //    cellInfo = new Cell(baseFile);
-        //    //timer.Start();
-        //    baseFile.BindVectorPointersOfVectors();
-        //    baseFile.BindVectorPointersOfFeatures();
-        //    baseFile.BuildVectorGeometry();
-        //    baseFile.BindFeatureObjectPointers();
-        //    //timer.Stop();
-        //    //Console.WriteLine(((double)(timer.Elapsed.TotalMilliseconds)).ToString("0.00 ms"));
-        //}    
 
         private void BuildCatalogue(Iso8211Reader reader)
         {
